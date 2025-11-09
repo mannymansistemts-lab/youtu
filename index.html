@@ -17,8 +17,10 @@
 <body>
   <div class="card">
     <h2>Generador SEO PRO — CATALOGOS VIRTUALES</h2>
+
     <label>Marca / Tema</label>
     <input id="brand" placeholder="Ej: Fuller" />
+
     <div class="row">
       <div class="col">
         <label>Campaña / Código</label>
@@ -29,8 +31,10 @@
         <input id="year" value="2025" />
       </div>
     </div>
+
     <label>Resumen corto (2 líneas) — usa tus palabras</label>
     <textarea id="summary" rows="3" placeholder="Ej: Nuevas fragancias, productos para el hogar y promociones para vendedoras."></textarea>
+
     <label>País</label>
     <select id="country">
       <option value="MX">México</option>
@@ -38,7 +42,9 @@
       <option value="CO">Colombia</option>
       <option value="CL">Chile</option>
     </select>
-    <button id="go">Generar SEO PRO (YouTube)</button>
+
+    <button id="go">Conectando...</button>
+
     <h3>Resultados — Vende Más por Catálogo</h3>
     <strong>Título:</strong>
     <pre id="a_title">—</pre>
@@ -46,6 +52,7 @@
     <pre id="a_desc">—</pre>
     <strong>Hashtags:</strong>
     <pre id="a_hash">—</pre>
+
     <h3>Resultados — Catálogos Virtuales LATAM</h3>
     <strong>Título:</strong>
     <pre id="b_title">—</pre>
@@ -53,16 +60,39 @@
     <pre id="b_desc">—</pre>
     <strong>Hashtags:</strong>
     <pre id="b_hash">—</pre>
+
     <h3>Etiquetas (YouTube Studio)</h3>
     <pre id="tags">—</pre>
+
     <h3>Mejor Horario sugerido (MX hora)</h3>
     <pre id="hours">—</pre>
   </div>
+
 <script>
-// URL del endpoint en tu proyecto Vercel correcto
-const API_URL = const API_URL = 'https://youtu-iota.vercel.app/api/trends';
+const API_URL = 'https://youtu-iota.vercel.app/api/trends';
+const btn = document.getElementById('go');
 
+// Verificación de conexión al cargar
+async function checkConnection() {
+  try {
+    const r = await fetch(`${API_URL}?brand=test&campaign=test&summary=test&country=MX`);
+    const j = await r.json();
+    if(j.error){
+      btn.style.background = 'red';
+      btn.textContent = 'Conexión fallida ❌';
+    } else {
+      btn.style.background = 'green';
+      btn.textContent = 'Conectado ✅';
+    }
+  } catch(e){
+    console.error(e);
+    btn.style.background = 'red';
+    btn.textContent = 'Conexión fallida ❌';
+  }
+}
+checkConnection();
 
+// Función principal para generar SEO
 document.getElementById('go').addEventListener('click', async ()=>{
   const brand = document.getElementById('brand').value.trim();
   const campaign = document.getElementById('campaign').value.trim();
@@ -70,36 +100,38 @@ document.getElementById('go').addEventListener('click', async ()=>{
   const summary = document.getElementById('summary').value.trim();
   const country = document.getElementById('country').value || 'MX';
   if(!brand){ alert('Escribe la marca'); return; }
+
   const url = `${API_URL}?brand=${encodeURIComponent(brand)}&campaign=${encodeURIComponent(campaign)}&year=${encodeURIComponent(year)}&summary=${encodeURIComponent(summary)}&country=${encodeURIComponent(country)}`;
+
   setLoading(true);
   try {
     const r = await fetch(url);
     const j = await r.json();
     if(j.error){ alert('Error: '+j.error); setLoading(false); return; }
+
     // Panel A
     document.getElementById('a_title').textContent = j.channelA?.title || '—';
     document.getElementById('a_desc').textContent = j.channelA?.description || '—';
     document.getElementById('a_hash').textContent = (j.channelA?.hashtags || []).join(' ') || '—';
+
     // Panel B
     document.getElementById('b_title').textContent = j.channelB?.title || '—';
     document.getElementById('b_desc').textContent = j.channelB?.description || '—';
     document.getElementById('b_hash').textContent = (j.channelB?.hashtags || []).join(' ') || '—';
+
     // Tags y horas
     document.getElementById('tags').textContent = (j.tags || []).join(', ') || '—';
     document.getElementById('hours').textContent = (j.bestHours || []).map(h => `${h}:00 - ${h+1}:00`).join(', ') || '—';
-  } catch (e) {
+  } catch(e) {
     console.error(e);
     alert('Error al conectar. Mira consola.');
   } finally { setLoading(false); }
 });
 
 function setLoading(on){
-  document.getElementById('go').disabled = on;
-  document.getElementById('go').textContent = on ? 'Generando...' : 'Generar SEO PRO (YouTube)';
+  btn.disabled = on;
+  btn.textContent = on ? 'Generando...' : 'Generar SEO PRO (YouTube)';
 }
 </script>
 </body>
 </html>
-
-
-
