@@ -15,7 +15,7 @@
 </head>
 <body>
   <div class="card">
-    <h2>Generador SEO PRO — TS Docentes</h2>
+    <h2>Generador SEO PRO — CATALOGOS VIRTUALES</h2>
 
     <label>Marca / Tema</label>
     <input id="brand" placeholder="Ej: Fuller" />
@@ -63,7 +63,7 @@
   </div>
 
 <script>
-const API_URL = '/api/trends'; // si subes a Vercel tal cual, esto funcionará
+const API_URL = 'https://youtu-iota.vercel.app/'; // si subes a Vercel tal cual, esto funcionará
 
 document.getElementById('go').addEventListener('click', async ()=>{
   const brand = document.getElementById('brand').value.trim();
@@ -101,3 +101,4 @@ function setLoading(on){
 </script>
 </body>
 </html>
+
