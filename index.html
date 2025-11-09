@@ -60,7 +60,8 @@
   </div>
 <script>
 // URL del endpoint en tu proyecto Vercel correcto
-const API_URL = 'https://youtu-iota.vercel.app/api/trends';
+const API_URL = const API_URL = 'https://youtu-iota.vercel.app/api/trends';
+
 
 document.getElementById('go').addEventListener('click', async ()=>{
   const brand = document.getElementById('brand').value.trim();
@@ -99,5 +100,6 @@ function setLoading(on){
 </script>
 </body>
 </html>
+
 
 
