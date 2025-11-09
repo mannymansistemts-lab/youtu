@@ -1,8 +1,18 @@
 // api/trends.js
-// Vercel / Netlify compatible (Node 18+). Usa la YouTube Data API v3.
-// Requiere: configurar YOUTUBE_API_KEY en Environment Variables de Vercel.
+// Compatible con Vercel / Netlify. Usa la YouTube Data API v3.
+// Requiere: configurar YOUTUBE_API_KEY en las Environment Variables de tu proyecto.
 
 export default async function handler(request, response) {
+  // 🔸 CORS seguro y completo
+  response.setHeader('Access-Control-Allow-Origin', '*');
+  response.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+  response.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+
+  // 🔸 Responder a las peticiones de verificación (preflight)
+  if (request.method === 'OPTIONS') {
+    return response.status(200).end();
+  }
+
   try {
     const YT_KEY = process.env.YOUTUBE_API_KEY;
     if (!YT_KEY) {
@@ -19,7 +29,7 @@ export default async function handler(request, response) {
       return response.status(400).json({ error: 'brand query param required' });
     }
 
-    // 1) Buscar videos relevantes por marca+campaña
+    // 🔹 Buscar videos relevantes
     const q = encodeURIComponent(`${brand} ${campaign}`.trim());
     const searchUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&maxResults=${maxVideos}&q=${q}&relevanceLanguage=es&regionCode=${country}&key=${YT_KEY}`;
     const searchResp = await fetch(searchUrl);
@@ -28,48 +38,48 @@ export default async function handler(request, response) {
 
     const videoIds = items.map(i => i.id?.videoId).filter(Boolean).join(',');
     let ytTags = [];
-    const publishedHours = []; // para calcular mejor horario
+    const publishedHours = [];
 
     if (videoIds) {
       const videosUrl = `https://www.googleapis.com/youtube/v3/videos?part=snippet,statistics&id=${videoIds}&key=${YT_KEY}`;
       const videosResp = await fetch(videosUrl);
       const videosJson = await videosResp.json();
+
       for (const v of (videosJson.items || [])) {
         const tags = v.snippet.tags || [];
         ytTags = ytTags.concat(tags.map(t => t.toLowerCase()));
-        // extraer hashtags en descripcion
+
+        // extraer hashtags en descripción
         const desc = v.snippet.description || '';
         const found = (desc.match(/#[\p{L}\p{N}_]+/gu) || []).map(h => h.toLowerCase());
         ytTags = ytTags.concat(found);
-        // registrar hora de publicación (UTC -> ajustar a zona MX)
+
+        // registrar hora de publicación
         if (v.snippet.publishedAt) {
           const date = new Date(v.snippet.publishedAt);
-          // convertir a hora local de Mexico City (UTC-6 ó -5 con DST) -> usaremos UTC-6 fija para simplicidad
           const hourMX = (date.getUTCHours() - 6 + 24) % 24;
           publishedHours.push(hourMX);
         }
       }
     }
 
-    // normalizar y contar ocurrencias de hashtags/tags
+    // 🔹 Contar ocurrencias
     const normalize = s => s.toString().toLowerCase().replace(/[^\w#\sáéíóúüñ\-]/g, '').trim();
     const freq = {};
     ytTags.map(t => normalize(t)).filter(Boolean).forEach(t => { freq[t] = (freq[t] || 0) + 1; });
+    const sorted = Object.keys(freq).sort((a, b) => freq[b] - freq[a]);
 
-    // crear lista ordenada por frecuencia
-    const sorted = Object.keys(freq).sort((a,b) => freq[b] - freq[a]);
-
-    // helpers para crear hashtags limpias
+    // 🔹 Helpers
     const makeHash = txt => {
-      const t = txt.replace(/^#/, '').normalize('NFD').replace(/[\u0300-\u036f]/g,'')
-        .replace(/[^a-z0-9\s]/gi,'').trim().replace(/\s+/g,'');
+      const t = txt.replace(/^#/, '')
+        .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^a-z0-9\s]/gi, '').trim().replace(/\s+/g, '');
       return '#' + t;
     };
 
-    // listas finales de hashtags por canal (siempre incluir fijos)
+    // 🔹 Crear listas finales de hashtags
     const fixedA = '#vendemasporcatalogo';
     const fixedB = '#catalogosvirtualeslatam';
-
     const maxPerChannel = 7;
     const resultA = [fixedA];
     const resultB = [fixedB];
@@ -78,14 +88,11 @@ export default async function handler(request, response) {
       if (resultA.length >= maxPerChannel && resultB.length >= maxPerChannel) break;
       const h = t.startsWith('#') ? t : makeHash(t);
       if (!resultA.includes(h) && !resultB.includes(h) && h !== fixedA && h !== fixedB) {
-        // alternar asignación para evitar duplicados
         if (resultA.length <= resultB.length && resultA.length < maxPerChannel) resultA.push(h);
         else if (resultB.length < maxPerChannel) resultB.push(h);
-        else if (resultA.length < maxPerChannel) resultA.push(h);
       }
     }
 
-    // si faltan hashtags, generar combinaciones basicas de brand/campaign/year
     const year = new Date().getFullYear();
     const basics = [
       makeHash(`catalogo ${brand}`),
@@ -98,7 +105,7 @@ export default async function handler(request, response) {
       if (resultB.length < maxPerChannel && !resultB.includes(b) && !resultA.includes(b)) resultB.push(b);
     }
 
-    // construir etiquetas (YouTube Studio style) usando base + summary
+    // 🔹 Etiquetas de estudio
     const studioTags = [
       `catalogo ${brand} ${campaign} ${year}`.trim(),
       `${brand} ${year}`.trim(),
@@ -106,42 +113,39 @@ export default async function handler(request, response) {
       `ofertas ${brand}`,
     ];
     if (summary) {
-      const kws = summary.split(',').map(s=>s.trim()).filter(Boolean);
-      kws.forEach(k => studioTags.push(`${k} ${brand}`));
+      summary.split(',').map(s => s.trim()).filter(Boolean).forEach(k => studioTags.push(`${k} ${brand}`));
     }
 
-    // calcular mejor hora: el mode de publishedHours
+    // 🔹 Mejor horario
     let bestHours = [];
     if (publishedHours.length) {
       const countH = {};
-      publishedHours.forEach(h => countH[h] = (countH[h]||0) + 1);
-      const sortedH = Object.keys(countH).sort((a,b) => countH[b] - countH[a]);
-      // tomar top 3 horas
-      bestHours = sortedH.slice(0,3).map(h => parseInt(h,10));
+      publishedHours.forEach(h => countH[h] = (countH[h] || 0) + 1);
+      const sortedH = Object.keys(countH).sort((a, b) => countH[b] - countH[a]);
+      bestHours = sortedH.slice(0, 3).map(h => parseInt(h, 10));
     } else {
-      bestHours = [19,20]; // fallback: 7-8pm
+      bestHours = [19, 20];
     }
 
-    // generar título y descripción basicos (plantilla; frontend puede pulir)
+    // 🔹 Título y descripción
     const titleA = `${brand} ${campaign} ${year} | Ofertas y Novedades - Vende Más`;
     const titleB = `${brand} ${campaign} ${year} | Catálogo Virtual LATAM`;
 
-    const descriptionA = `${summary ? summary + '\\n\\n' : ''}Descubre lo nuevo de ${brand} ${campaign} ${year}. Ideal para vendedores por catálogo. 📲 Descarga la app y comparte. ${fixedA}`;
-    const descriptionB = `${summary ? summary + '\\n\\n' : ''}Explora el catálogo virtual de ${brand} ${campaign} ${year} para toda LATAM. ${fixedB}`;
+    const descriptionA = `${summary ? summary + '\n\n' : ''}Descubre lo nuevo de ${brand} ${campaign} ${year}. Ideal para vendedores por catálogo. 📲 Descarga la app y comparte. ${fixedA}`;
+    const descriptionB = `${summary ? summary + '\n\n' : ''}Explora el catálogo virtual de ${brand} ${campaign} ${year} para toda LATAM. ${fixedB}`;
 
-    response.setHeader('Access-Control-Allow-Origin', '*');
     response.setHeader('Cache-Control', 's-maxage=60, stale-while-revalidate=120');
     return response.json({
       brand, campaign, summary, country,
-      channelA: { name: 'Vende Más por Catálogo', title: titleA, description: descriptionA, hashtags: resultA.slice(0,maxPerChannel) },
-      channelB: { name: 'Catálogos Virtuales LATAM', title: titleB, description: descriptionB, hashtags: resultB.slice(0,maxPerChannel) },
+      channelA: { name: 'Vende Más por Catálogo', title: titleA, description: descriptionA, hashtags: resultA.slice(0, maxPerChannel) },
+      channelB: { name: 'Catálogos Virtuales LATAM', title: titleB, description: descriptionB, hashtags: resultB.slice(0, maxPerChannel) },
       tags: studioTags,
       bestHours, sampleCount: items.length
     });
 
   } catch (err) {
     console.error(err);
-    response.setHeader('Access-Control-Allow-Origin','*');
+    response.setHeader('Access-Control-Allow-Origin', '*');
     return response.status(500).json({ error: err.message || String(err) });
   }
 }
