@@ -1,16 +1,15 @@
 // api/trends.js
-// Vercel / Netlify compatible (Node 18+). Usa la YouTube Data API v3.
-// Requiere: configurar YOUTUBE_API_KEY en Environment Variables de Vercel.
+// Vercel compatible (Node 18+). Usa la YouTube Data API v3.
+// Requiere configurar YOUTUBE_API_KEY en Environment Variables de Vercel.
 
 export default async function handler(request, response) {
-  // Configuración CORS
   const corsHeaders = {
-    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Origin': '*', // Cambia '*' por dominio específico si quieres restringir
     'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type, Authorization',
   };
 
-  // Manejo preflight OPTIONS para CORS
+  // Responder OPTIONS para preflight CORS
   if (request.method === 'OPTIONS') {
     response.writeHead(204, corsHeaders);
     return response.end();
@@ -38,7 +37,7 @@ export default async function handler(request, response) {
       return response.status(400).json({ error: 'brand query param required' });
     }
 
-    // Buscar videos en YouTube API
+    // Construir consulta para búsqueda YouTube
     const q = encodeURIComponent(`${brand} ${campaign}`.trim());
     const searchUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&maxResults=${maxVideos}&q=${q}&relevanceLanguage=es&regionCode=${country}&key=${YT_KEY}`;
     const searchResp = await fetch(searchUrl);
@@ -67,7 +66,7 @@ export default async function handler(request, response) {
       }
     }
 
-    // Normalizar y contar frecuencia de hashtags
+    // Normalizar y contar hashtags
     const normalize = s => s.toString().toLowerCase().replace(/[^\w#\sáéíóúüñ\-]/g, '').trim();
     const freq = {};
     ytTags.map(t => normalize(t)).filter(Boolean).forEach(t => { freq[t] = (freq[t] || 0) + 1; });
@@ -142,7 +141,6 @@ export default async function handler(request, response) {
       tags: studioTags,
       bestHours, sampleCount: items.length
     });
-
   } catch (err) {
     console.error(err);
     return response.status(500).json({ error: err.message || String(err) });
