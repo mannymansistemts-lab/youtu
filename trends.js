@@ -1,25 +1,28 @@
 // api/trends.js
-// Vercel compatible (Node 18+). Usa YouTube Data API v3.
-// Requiere configurar YOUTUBE_API_KEY en Environment Variables de Vercel.
+// Vercel / Netlify compatible (Node 18+). Usa la YouTube Data API v3.
+// Requiere: configurar YOUTUBE_API_KEY en Environment Variables de Vercel.
 
 export default async function handler(request, response) {
-  // Permitir CORS para cualquier origen (ajusta si quieres restringir)
+  // Configuración CORS
   const corsHeaders = {
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type, Authorization',
   };
 
-  // Responder en preflight OPTIONS
+  // Manejo preflight OPTIONS para CORS
   if (request.method === 'OPTIONS') {
     response.writeHead(204, corsHeaders);
     return response.end();
   }
 
-  try {
-    response.setHeader('Access-Control-Allow-Origin', '*');
-    response.setHeader('Cache-Control', 's-maxage=60, stale-while-revalidate=120');
+  // Agregar cabeceras CORS a todas las respuestas
+  response.setHeader('Access-Control-Allow-Origin', '*');
+  response.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  response.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  response.setHeader('Cache-Control', 's-maxage=60, stale-while-revalidate=120');
 
+  try {
     const YT_KEY = process.env.YOUTUBE_API_KEY;
     if (!YT_KEY) {
       return response.status(500).json({ error: 'Missing YOUTUBE_API_KEY in env' });
@@ -35,7 +38,7 @@ export default async function handler(request, response) {
       return response.status(400).json({ error: 'brand query param required' });
     }
 
-    // Buscar videos relevantes por marca+campaña
+    // Buscar videos en YouTube API
     const q = encodeURIComponent(`${brand} ${campaign}`.trim());
     const searchUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&maxResults=${maxVideos}&q=${q}&relevanceLanguage=es&regionCode=${country}&key=${YT_KEY}`;
     const searchResp = await fetch(searchUrl);
@@ -64,6 +67,7 @@ export default async function handler(request, response) {
       }
     }
 
+    // Normalizar y contar frecuencia de hashtags
     const normalize = s => s.toString().toLowerCase().replace(/[^\w#\sáéíóúüñ\-]/g, '').trim();
     const freq = {};
     ytTags.map(t => normalize(t)).filter(Boolean).forEach(t => { freq[t] = (freq[t] || 0) + 1; });
@@ -107,3 +111,40 @@ export default async function handler(request, response) {
     const studioTags = [
       `catalogo ${brand} ${campaign} ${year}`.trim(),
       `${brand} ${year}`.trim(),
+      `${brand} mexico`,
+      `ofertas ${brand}`,
+    ];
+    if (summary) {
+      const kws = summary.split(',').map(s=>s.trim()).filter(Boolean);
+      kws.forEach(k => studioTags.push(`${k} ${brand}`));
+    }
+
+    let bestHours = [];
+    if (publishedHours.length) {
+      const countH = {};
+      publishedHours.forEach(h => countH[h] = (countH[h]||0) + 1);
+      const sortedH = Object.keys(countH).sort((a,b) => countH[b] - countH[a]);
+      bestHours = sortedH.slice(0,3).map(h => parseInt(h,10));
+    } else {
+      bestHours = [19,20]; // fallback
+    }
+
+    const titleA = `${brand} ${campaign} ${year} | Ofertas y Novedades - Vende Más`;
+    const titleB = `${brand} ${campaign} ${year} | Catálogo Virtual LATAM`;
+
+    const descriptionA = `${summary ? summary + '\n\n' : ''}Descubre lo nuevo de ${brand} ${campaign} ${year}. Ideal para vendedores por catálogo. 📲 Descarga la app y comparte. ${fixedA}`;
+    const descriptionB = `${summary ? summary + '\n\n' : ''}Explora el catálogo virtual de ${brand} ${campaign} ${year} para toda LATAM. ${fixedB}`;
+
+    return response.json({
+      brand, campaign, summary, country,
+      channelA: { name: 'Vende Más por Catálogo', title: titleA, description: descriptionA, hashtags: resultA.slice(0,maxPerChannel) },
+      channelB: { name: 'Catálogos Virtuales LATAM', title: titleB, description: descriptionB, hashtags: resultB.slice(0,maxPerChannel) },
+      tags: studioTags,
+      bestHours, sampleCount: items.length
+    });
+
+  } catch (err) {
+    console.error(err);
+    return response.status(500).json({ error: err.message || String(err) });
+  }
+}
