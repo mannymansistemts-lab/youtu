@@ -1,0 +1,297 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Generador SEO PRO — TS Docentes</title>
+  <style>
+    :root{--bg:#071026;--card:#071423;--accent:#ff6b00;--muted:rgba(255,255,255,0.07)}
+    body{font-family:Inter,Arial,Helvetica,sans-serif;background:var(--bg);color:#e6eef8;padding:18px;-webkit-font-smoothing:antialiased}
+    .card{max-width:980px;margin:0 auto;background:rgba(255,255,255,0.03);padding:18px;border-radius:10px}
+    label{display:block;margin-top:10px;font-weight:600;color:#cfe8ff}
+    input,textarea,select{width:100%;padding:10px;border-radius:8px;border:none;background:var(--muted);color:#fff;margin-top:8px;box-sizing:border-box}
+    button{padding:10px 14px;border-radius:8px;border:0;background:var(--accent);color:#071423;font-weight:700;cursor:pointer;margin-top:12px}
+    pre{background:rgba(0,0,0,0.25);padding:10px;border-radius:8px;margin-top:10px;white-space:pre-wrap;min-height:40px}
+    .row{display:flex;gap:12px;flex-wrap:wrap}
+    .col{flex:1;min-width:220px}
+    .small{font-size:13px;color:#9cc9ff}
+    .error{background:#3a1b1b;color:#ffd7d7;padding:8px;border-radius:8px;margin-top:10px}
+    .hint{font-size:13px;color:#b9e0ff;margin-top:6px}
+    .topbar{display:flex;gap:12px;align-items:center;justify-content:space-between}
+    .loading{opacity:0.7}
+    .controls{display:flex;gap:8px;align-items:center;margin-top:8px}
+  </style>
+</head>
+<body>
+  <div class="card" id="app">
+    <div class="topbar">
+      <h2>Generador SEO PRO — TS Docentes</h2>
+      <div class="small">Demo conectable a API (o usa fallback local)</div>
+    </div>
+
+    <label>Marca / Tema</label>
+    <input id="brand" placeholder="Ej: Fuller">
+
+    <div class="row">
+      <div class="col">
+        <label>Campaña / Código</label>
+        <input id="campaign" placeholder="Ej: Campaña 17">
+      </div>
+      <div class="col">
+        <label>Año</label>
+        <input id="year" value="2025">
+      </div>
+    </div>
+
+    <label>Resumen corto (2 líneas) — usa tus palabras</label>
+    <textarea id="summary" rows="3" placeholder="Ej: Nuevas fragancias, productos para el hogar y promociones para vendedoras."></textarea>
+
+    <label>País</label>
+    <select id="country">
+      <option value="MX">México</option>
+      <option value="PE">Perú</option>
+      <option value="CO">Colombia</option>
+      <option value="CL">Chile</option>
+    </select>
+
+    <div class="controls">
+      <button id="go">Generar SEO PRO (YouTube)</button>
+      <label style="margin-left:8px"><input type="checkbox" id="useFallback"> Usar fallback local</label>
+      <label style="margin-left:auto" class="small">Timeout: <input id="timeoutMs" value="8000" style="width:80px;padding:6px;border-radius:6px;background:rgba(255,255,255,0.03);color:#fff;border:none;margin-left:6px"> ms</label>
+    </div>
+
+    <div id="status" class="hint">Estado: listo</div>
+    <div id="err" role="alert" style="display:none" class="error"></div>
+
+    <h3>Resultados — Vende Más por Catálogo</h3>
+    <strong>Título:</strong>
+    <pre id="a_title">—</pre>
+    <strong>Descripción:</strong>
+    <pre id="a_desc">—</pre>
+    <strong>Hashtags:</strong>
+    <pre id="a_hash">—</pre>
+
+    <h3>Resultados — Catálogos Virtuales LATAM</h3>
+    <strong>Título:</strong>
+    <pre id="b_title">—</pre>
+    <strong>Descripción:</strong>
+    <pre id="b_desc">—</pre>
+    <strong>Hashtags:</strong>
+    <pre id="b_hash">—</pre>
+
+    <h3>Etiquetas (YouTube Studio)</h3>
+    <pre id="tags">—</pre>
+
+    <h3>Mejor Horario sugerido (MX hora)</h3>
+    <pre id="hours">—</pre>
+
+    <div class="hint" style="margin-top:12px">
+      Si ves un error de <strong>CORS</strong> en la consola, habilita CORS en el servidor de la API o usa un proxy. También puedes marcar <em>Usar fallback local</em> para generar resultados offline.
+    </div>
+  </div>
+
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+  // URL de la API (la tuya)
+  const API_URL = 'https://youtu-iota.vercel.app/api/trends';
+
+  // Elementos
+  const btn = document.getElementById('go');
+  const status = document.getElementById('status');
+  const errBox = document.getElementById('err');
+  const useFallback = document.getElementById('useFallback');
+  const timeoutInput = document.getElementById('timeoutMs');
+
+  // Fill helper - safe access
+  function safeGet(obj, path, def='—') {
+    try {
+      const parts = path.split('.');
+      let cur = obj;
+      for(const p of parts){
+        if(cur == null) return def;
+        cur = cur[p];
+      }
+      if(cur === undefined || cur === null) return def;
+      return cur;
+    } catch(e){ return def; }
+  }
+
+  // Mostrar error visible
+  function showError(msg){
+    errBox.style.display = 'block';
+    errBox.textContent = msg;
+  }
+  function clearError(){
+    errBox.style.display = 'none';
+    errBox.textContent = '';
+  }
+
+  // Rellenar UI con objeto j
+  function populateFromJSON(j){
+    // channelA
+    document.getElementById('a_title').textContent = safeGet(j,'channelA.title');
+    document.getElementById('a_desc').textContent = safeGet(j,'channelA.description');
+    const aHash = safeGet(j,'channelA.hashtags', []);
+    document.getElementById('a_hash').textContent = Array.isArray(aHash) ? aHash.join(' ') : String(aHash);
+
+    // channelB
+    document.getElementById('b_title').textContent = safeGet(j,'channelB.title');
+    document.getElementById('b_desc').textContent = safeGet(j,'channelB.description');
+    const bHash = safeGet(j,'channelB.hashtags', []);
+    document.getElementById('b_hash').textContent = Array.isArray(bHash) ? bHash.join(' ') : String(bHash);
+
+    // tags
+    const tags = j.tags || [];
+    document.getElementById('tags').textContent = Array.isArray(tags) ? tags.join(', ') : String(tags);
+
+    // hours (bestHours could be array of numbers or strings)
+    const best = j.bestHours || [];
+    if(Array.isArray(best) && best.length){
+      const hoursStr = best.map(h=>{
+        const n = Number(h);
+        if(isNaN(n)) return String(h);
+        return `${n}:00 - ${n+1}:00`;
+      }).join(', ');
+      document.getElementById('hours').textContent = hoursStr;
+    } else {
+      document.getElementById('hours').textContent = '—';
+    }
+  }
+
+  // Genera fallback local sencillo
+  function generateFallback(){
+    const brand = document.getElementById('brand').value.trim() || 'Marca';
+    const campaign = document.getElementById('campaign').value.trim() || 'Campaña';
+    const year = document.getElementById('year').value.trim() || '2025';
+    const summary = document.getElementById('summary').value.trim() || 'Lanzamientos y promociones.';
+    const country = document.getElementById('country').value || 'MX';
+
+    const fake = {
+      channelA: {
+        title: `Catálogo ${brand} ${campaign} ${year} — Oferta especial`,
+        description: `Conoce el catálogo ${brand} ${campaign} ${year}. ${summary} Perfecto para vendedoras en ${country}.`,
+        hashtags: [`#${brand}`, `#Catalogos${year}`, '#Ventas', '#CatalogosDigitales']
+      },
+      channelB: {
+        title: `${brand} - Novedades ${year}`,
+        description: `Novedades de ${brand}. ${summary}`,
+        hashtags: [`#${brand}Novedades`, '#Promociones']
+      },
+      tags: [brand, 'catalogos', 'ventas', 'promociones', country],
+      bestHours: [10, 18]
+    };
+    return fake;
+  }
+
+  // Fetch con timeout
+  async function fetchWithTimeout(url, opts={}, ms=8000){
+    const controller = new AbortController();
+    const id = setTimeout(()=>controller.abort(), ms);
+    opts.signal = controller.signal;
+    try {
+      const resp = await fetch(url, opts);
+      clearTimeout(id);
+      return resp;
+    } catch (e) {
+      clearTimeout(id);
+      throw e;
+    }
+  }
+
+  // Evento click
+  btn.addEventListener('click', async ()=>{
+    clearError();
+    status.textContent = 'Estado: generando...';
+    btn.disabled = true;
+    btn.classList.add('loading');
+
+    // Datos
+    const brand = document.getElementById('brand').value.trim();
+    const campaign = document.getElementById('campaign').value.trim();
+    const summary = document.getElementById('summary').value.trim();
+    const country = document.getElementById('country').value || 'MX';
+    const timeoutMs = Number(timeoutInput.value) || 8000;
+
+    // Validación mínima
+    if(!brand && !useFallback.checked){
+      showError('Escribe la marca o activa "Usar fallback local".');
+      status.textContent = 'Estado: error';
+      btn.disabled = false;
+      btn.classList.remove('loading');
+      return;
+    }
+
+    if(useFallback.checked){
+      // fallback inmediato
+      const fake = generateFallback();
+      populateFromJSON(fake);
+      status.textContent = 'Estado: resultados generados (fallback local)';
+      btn.disabled = false;
+      btn.classList.remove('loading');
+      return;
+    }
+
+    // Construir URL con parámetros (si así lo espera tu API)
+    const url = `${API_URL}?brand=${encodeURIComponent(brand)}&campaign=${encodeURIComponent(campaign)}&summary=${encodeURIComponent(summary)}&country=${encodeURIComponent(country)}`;
+
+    try {
+      const resp = await fetchWithTimeout(url, {method:'GET'}, timeoutMs);
+      if(!resp.ok){
+        // Status != 200
+        const txt = await resp.text().catch(()=>null);
+        showError(`Error en respuesta de la API (HTTP ${resp.status}). ${txt ? 'Respuesta: '+txt : ''}`);
+        // como fallback intenta crear local para que no quede vacío
+        const fake = generateFallback();
+        populateFromJSON(fake);
+        status.textContent = `Estado: API HTTP ${resp.status} — se usó fallback local`;
+        return;
+      }
+
+      // Parse JSON seguro
+      let j;
+      try {
+        j = await resp.json();
+      } catch (e){
+        showError('La API respondió JSON inválido o vacío.');
+        const txt = await resp.text().catch(()=>null);
+        console.error('Respuesta no JSON:', txt);
+        const fake = generateFallback();
+        populateFromJSON(fake);
+        status.textContent = 'Estado: respuesta no JSON — fallback local aplicado';
+        return;
+      }
+
+      // Manejo de errores dentro del JSON
+      if(j.error){
+        showError('La API devolvió error: ' + j.error);
+        const fake = generateFallback();
+        populateFromJSON(fake);
+        status.textContent = 'Estado: API devolvió error — fallback local usado';
+        return;
+      }
+
+      // Todo ok — rellenar UI (usa safeGet)
+      populateFromJSON(j);
+      status.textContent = 'Estado: OK — datos cargados desde API';
+    } catch (e){
+      // Red / CORS / Abort
+      console.error(e);
+      if(e.name === 'AbortError'){
+        showError('Timeout: la API no respondió (tiempo agotado).');
+        status.textContent = 'Estado: timeout — fallback local usado';
+      } else {
+        // Esto puede ser CORS o problema de red
+        showError('Error de conexión (CORS o red). Mira la consola para más detalles.');
+        status.textContent = 'Estado: conexión fallida — fallback local usado';
+      }
+      const fake = generateFallback();
+      populateFromJSON(fake);
+    } finally {
+      btn.disabled = false;
+      btn.classList.remove('loading');
+    }
+  });
+});
+</script>
+</body>
+</html>
